@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup as bs
 import time
 from pprint import pprint as pprint
 
+SLEEP_TIME = 10
 
 def get_docs_json(sess, url):
     """
@@ -53,7 +54,7 @@ def get_docs_json(sess, url):
     except requests.exceptions.RequestException as err:
         print("OOps: Something Else", err)
 
-    time.sleep(10)
+    time.sleep(SLEEP_TIME)
     # pass
 
 
