@@ -3,6 +3,10 @@
 #settings
 .idea
 
+#dirs
+node_modules
 
 
+#files
+test.py
 

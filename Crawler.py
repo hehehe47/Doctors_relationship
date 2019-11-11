@@ -10,55 +10,11 @@ import cfscrape
 from bs4 import BeautifulSoup as bs
 import time
 from pprint import pprint as pprint
+import redis
 
-SLEEP_TIME = 10
-
-def get_docs_json(sess, url):
-    """
-    info for each doc
-    {'city_state': 'Washington, DC',
-     'degree': 'MD',
-     'degrees': 'MD',
-     'display_name': 'Dr. Gina OrTon',
-     'display_type': 'Doctor',
-     'locations': [{'_geoloc': {'lat': '38.89420000', 'lng': '-77.02460000'},
-                    'address1': '935 Pennsylvania Ave NW',
-                    'city': 'Washington',
-                    'state': 'DC'}],
-     'number_of_ratings': 1,
-     'overall_rating': 5,
-     'site': {'vitals': {'slug': 'Dr_Gina_Orton.html',
-                         'url': '/doctors/Dr_Gina_Orton.html'}},
-     'slug': 'Dr_Gina_Orton.html',
-     'specialties': ['Psychiatry'],
-     'type': 'doctor',
-     'url': '/doctors/Dr_Gina_Orton.html',
-     'vpid': 'zwkx5h'}
-    """
-
-    try:
-        page = sess.get(url)
-        page.raise_for_status()
-        page_json = page.json()
-        doctors = page_json['hits']['hits']
-        for doc in doctors:
-            # pprint(doc['_source']) # Beautiful print for Dictionary
-            print(doc['_source']['display_name'])
-            # TODO: save to database
-    except requests.exceptions.HTTPError as errh:
-        print("Http Error:", errh)
-    except requests.exceptions.ConnectionError as errc:
-        print("Error Connecting:", errc)
-    except requests.exceptions.Timeout as errt:
-        print("Timeout Error:", errt)
-    except requests.exceptions.RequestException as err:
-        print("OOps: Something Else", err)
-
-    time.sleep(SLEEP_TIME)
-    # pass
-
-
-header = {
+SLEEP_TIME = 5
+URL = 'https://www.vitals.com/search/ajax?display_type=Doctor&city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=0'
+HEADER = {
     # ':authority': 'www.vitals.com',
     # ':method': 'GET',
     # ':path': '/search/ajax?display_type=Doctor&reqNo=0',
@@ -74,10 +30,88 @@ header = {
     'x-requested-with': 'XMLHttpRequest'
 }
 
-url = 'https://www.vitals.com/search/ajax?display_type=Doctor&city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=0'
+
+def update_json(doc_info):
+    """
+        info for each doc
+        {'city_state': 'Washington, DC',
+         'degree': 'MD',
+         'degrees': 'MD',
+         'display_name': 'Dr. Gina OrTon',
+         'display_type': 'Doctor',
+         'locations': [{'_geoloc': {'lat': '38.89420000', 'lng': '-77.02460000'},
+                        'address1': '935 Pennsylvania Ave NW',
+                        'city': 'Washington',
+                        'state': 'DC'}],
+         'number_of_ratings': 1,
+         'overall_rating': 5,
+         'site': {'vitals': {'slug': 'Dr_Gina_Orton.html',
+                             'url': '/doctors/Dr_Gina_Orton.html'}},
+         'slug': 'Dr_Gina_Orton.html',
+         'specialties': ['Psychiatry'],
+         'type': 'doctor',
+         'url': '/doctors/Dr_Gina_Orton.html',
+         'vpid': 'zwkx5h'}
+        """
+    doc_info['address'] = doc_info['locations'][0]['address1']
+    # pprint(doc_info['locations'])
+    doc_info['lat'] = str(doc_info['locations'][0]['_geoloc']['lat'])
+    doc_info['lng'] = str(doc_info['locations'][0]['_geoloc']['lng'])
+    doc_info['url'] = 'https://www.vitals.com' + doc_info['url']
+    for ke, ve in doc_info.items():
+        if ve and type(ve) == list and ve != 'locations':
+            doc_info[ke] = ve[0]
+    need_to_pop = [k for k, v in doc_info.items() if type(v) == list or type(v) == dict]
+    need_to_pop.append('display_name')
+    for item in need_to_pop:
+        doc_info.pop(item)
+
+
+def save_docs(sess, url):
+    try:
+        page = sess.get(url)
+        page.raise_for_status()
+        page_json = page.json()
+        doctors = page_json['hits']['hits']
+        for doc in doctors:
+            doc_info = doc['_source']
+            doc_name = doc_info['display_name']
+
+            update_json(doc_info)
+            try:
+                # print(doc_name)
+                client.hmset(name=doc_name, mapping=doc_info)
+            except redis.exceptions.DataError as err_data:
+                print(doc_info)
+                print(err_data)
+        # exit(0)
+
+    except requests.exceptions.HTTPError as errh:
+        print("Http Error: ", errh)
+    except requests.exceptions.ConnectionError as errc:
+        print("Error Connecting: ", errc)
+    except requests.exceptions.Timeout as errt:
+        print("Timeout Error: ", errt)
+    except requests.exceptions.RequestException as err:
+        print("OOps: Something Else ", err)
+
+    time.sleep(SLEEP_TIME)
+    # pass
+
+
+try:
+    pool = redis.ConnectionPool(host='localhost', port=6379, decode_responses=True)
+    client = redis.Redis(connection_pool=pool)
+    client.ping()  # Test DB connection
+except redis.ConnectionError as err_conn:
+    print("Connection Error: ", err_conn)
+    exit(0)
+
 session = requests.Session()
-session.headers = header
+session.headers = HEADER
 sess = cfscrape.create_scraper(sess=session)
-total_num = sess.get(url).json()['hits']['total']  # get total number of doctors
-for i in range(total_num // 21):  # 21 means each page contains 21 doctors
-    get_docs_json(sess, url + '&page=' + str(i))  # loop for those pages
+total_num = sess.get(URL).json()['hits']['total']  # get total number of doctors
+for i in range(total_num // 21):  # each page contains 21 doctors
+    print('Page ' + str(i) + ' start!')
+    save_docs(sess, URL + '&page=' + str(i))  # loop for those pages
+    print('Page ' + str(i) + ' complete!')
