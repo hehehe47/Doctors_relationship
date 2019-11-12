@@ -29,6 +29,22 @@ HEADER = {
     'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36',
     'x-requested-with': 'XMLHttpRequest'
 }
+NUM = 10000
+
+
+def build_connection():
+    try:
+        pool = redis.ConnectionPool(host='localhost', port=6379, decode_responses=True)
+        client = redis.Redis(connection_pool=pool)
+        client.ping()  # Test DB connection
+    except redis.ConnectionError as err_conn:
+        print("Connection Error: ", err_conn)
+        exit(0)
+    return client
+
+
+def check_exists(doc_name):
+    return True if doc_name in keys else False
 
 
 def update_json(doc_info):
@@ -76,7 +92,8 @@ def save_docs(sess, url):
         for doc in doctors:
             doc_info = doc['_source']
             doc_name = doc_info['display_name']
-
+            if check_exists(doc_name):
+                continue
             update_json(doc_info)
             try:
                 # print(doc_name)
@@ -99,19 +116,21 @@ def save_docs(sess, url):
     # pass
 
 
-try:
-    pool = redis.ConnectionPool(host='localhost', port=6379, decode_responses=True)
-    client = redis.Redis(connection_pool=pool)
-    client.ping()  # Test DB connection
-except redis.ConnectionError as err_conn:
-    print("Connection Error: ", err_conn)
-    exit(0)
+client = build_connection()
+
+keys = set(client.keys('*'))
 
 session = requests.Session()
 session.headers = HEADER
 sess = cfscrape.create_scraper(sess=session)
+
 total_num = sess.get(URL).json()['hits']['total']  # get total number of doctors
+count = 0
 for i in range(total_num // 21):  # each page contains 21 doctors
     print('Page ' + str(i) + ' start!')
     save_docs(sess, URL + '&page=' + str(i))  # loop for those pages
+    count += 1
     print('Page ' + str(i) + ' complete!')
+    if count == NUM:
+        print('Complete ' + str(NUM) + 'docs')
+        exit(0)
