@@ -27,10 +27,14 @@ HEADER = {
 session = requests.Session()
 session.headers = HEADER
 sess = cfscrape.create_scraper(sess=session)
-url = 'https://www.vitals.com/search/ajax?display_type=Doctor&city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=0&page=476'
+url = 'https://www.vitals.com/search/ajax?display_type=Doctor&city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=0&page=3'
 page = sess.get(url)
-print(page)
-print(page.text)
+# print(page)
+# print(page.text)
 import pprint
 
-pprint.pprint(page.json())
+for doc in page.json()['hits']['hits']:
+    # doc_info = doc['_source']
+    pprint.pprint(
+        doc
+    )
