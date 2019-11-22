@@ -16,18 +16,33 @@
 # MySQL
 import pymysql
 
-db = pymysql.connect(host="localhost", user='root', password='123456', database='DOCTORS')
-cursor = db.cursor()
-sql = """CREATE TABLE doctors (
-         FIRST_NAME  CHAR(20) NOT NULL,
-         LAST_NAME  CHAR(20),
-         AGE INT,  
-         SEX CHAR(1),
-         INCOME FLOAT )"""
-cursor.execute(sql)
+#  local DB
+# db = pymysql.connect(host="localhost", user='root', password='123456', database='DOCTORS')
+# cursor = db.cursor()
+# sql = """CREATE TABLE doctors (
+#          FIRST_NAME  CHAR(20) NOT NULL,
+#          LAST_NAME  CHAR(20),
+#          AGE INT,
+#          SEX CHAR(1),
+#          INCOME FLOAT )"""
+# cursor.execute(sql)
 # data = cursor.fetchone()
 # print(data)
-db.close()
+# db.close()
+
+
+# AWS DB
+mydb = pymysql.connect(
+)
+cursor = mydb.cursor()
+sql = """
+SELECT * FROM doctors_info.doctor;
+"""
+cursor.execute(sql)
+l = cursor.fetchall()
+for i in l:
+    print(i)
+
 
 # create table doctors
 # (

@@ -15,7 +15,7 @@ import mysql.connector
 import random
 
 SLEEP_TIME = 10
-URL = 'https://www.vitals.com/search/ajax?city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=0'
+URL = 'https://www.vitals.com/search/ajax?city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=1'
 HEADER = {
     # ':authority': 'www.vitals.com',
     # ':method': 'GET',
@@ -34,6 +34,23 @@ HEADER = {
 NUM = 10000
 NOT_CRAWL = {'Hospital', 'Pharmacy', 'Urgent Care Center', 'Group Practice', 'Nursing Home', 'Cancer Center'}
 
+DB = 'AWS'
+
+if DB == 'local':
+    connector = mysql.connector.connect(
+        host="localhost",
+        user="root",
+        passwd="123456",
+        database="doctors_info"
+    )
+elif DB == 'AWS':
+    connector = mysql.connector.connect(
+        host='db-instance-1-stock.c8ut9axdtyf4.us-east-1.rds.amazonaws.com',
+        user='star',
+        password='Zx1993624',
+        db='doctors_info',
+    )
+
 
 def redis_build_connection():
     try:
@@ -48,14 +65,9 @@ def redis_build_connection():
 
 def mysql_build_connection():
     try:
-        client = mysql.connector.connect(
-            host="localhost",
-            user="root",
-            passwd="123456",
-            database="doctors"
-        )
+        client = connector
     except mysql.connector.Error as err_conn:
-        print("Connection Error: ", err_conn)
+        print("DB Connection Error: ", err_conn)
         exit(0)
     return client
 
@@ -102,13 +114,19 @@ def mysql_build_connection():
 def get_detail(json, key):
     key = key.lower()
     if key == 'specialties':
-        return json.get(key, [''])[0]
+        specialties = json.get(key, None)
+        if specialties:
+            return ','.join(specialties)
+        # return json.get(key, [''])[0]
     elif key == 'city' or key == 'state' or key == 'address1':
         return json.get('locations')[0][key]
     elif key == 'lng' or key == 'lat':
         return json.get('locations')[0]['_geoloc'][key]
     elif key == 'url':
         return 'https://www.vitals.com' + json.get(key)
+    elif key == 'degree':
+        degree = json.get(key)
+        return degree if degree else None
     elif key == 'campaigns':
         campaign = json.get(key, None)
         if campaign:
@@ -117,27 +135,65 @@ def get_detail(json, key):
         return json.get(key, None)
 
 
+def vaild_uni_grad(university, grad_year):
+    if grad_year and len(grad_year) > 4 and grad_year[-4:].isnumeric():
+        grad_year = grad_year[-4:]
+    elif not grad_year or len(grad_year) < 4 or grad_year != 'Residency':
+        grad_year = None
+    if not university or len(university) < 2:
+        grad_year = None
+        university = None
+    return university, grad_year
+
+
 def get_doc_university(url):
-    grad_year, university = '', ''
     req = sess.get(url)
     soup = bs(req.text, features="lxml")
-    try:
-        university = soup.select('div[class="card education"] > ul > li > span')[
-            0].text.strip()  # soup.select('div > span')
-        grad_year = soup.select('div[class="card education"] > ul > li > p')[
-            0].text.strip()  # soup.select('div > span')
-    except IndexError:
-        pass
-    try:
-        university = soup.select('div[class="education"] > span')[0].text.strip()  # soup.select('div > span')
-        grad_year = soup.select('div[class="education"] > p')[0].text.strip()  # soup.select('div > span')
-    except IndexError:
-        pass
-    if len(grad_year) > 4 and grad_year[-4:].isnumeric():
-        grad_year = grad_year[-4:]
-    elif len(grad_year) < 4 or grad_year != 'Residency':
-        grad_year = ''
-    return university, grad_year
+    uni_grad = [(None, None)] * 2
+
+    if soup.select('div[class="education"]'):
+        div = 'div[class="education"]'
+        span = 'span[class="location"]'
+        p = 'p[class="education-text"]'
+    elif soup.select('div[class="card education"]'):
+        div = 'div[class="card education"]'
+        span = 'ul > li > span'
+        p = 'ul > li > p'
+    else:
+        return uni_grad
+    select_uni = div + ' > ' + span
+    select_grad = div + ' > ' + p
+
+    length = min(len(soup.select(select_uni)),
+                 len(soup.select(select_grad)),
+                 2)
+
+    for loop in range(length):
+        university = soup.select(select_uni)[loop].text.strip()
+        grad_year = soup.select(select_grad)[loop].text.strip()
+
+        uni_grad[loop] = vaild_uni_grad(university, grad_year)
+
+    # try:
+    #     university = soup.select('div[class="card education"] > ul > li > span')[
+    #         0].text.strip()  # soup.select('div > span')
+    #     grad_year = soup.select('div[class="card education"] > ul > li > p')[
+    #         0].text.strip()  # soup.select('div > span')
+    # except IndexError:
+    #     pass
+    # try:
+    #     university = soup.select('div[class="education"] > span')[0].text.strip()  # soup.select('div > span')
+    #     grad_year = soup.select('div[class="education"] > p')[0].text.strip()  # soup.select('div > span')
+    # except IndexError:
+    #     pass
+
+    return uni_grad
+
+
+def format_name(doc_name):
+    if doc_name.startswith('Dr.'):
+        doc_name = doc_name.lstrip('Dr.').lstrip()
+    return doc_name
 
 
 def save_docs(sess, url):
@@ -151,21 +207,21 @@ def save_docs(sess, url):
             dis_type = get_detail(doc_info, 'DISPLAY_TYPE')
             if dis_type in NOT_CRAWL:
                 continue
-            doc_name = doc_info['display_name']
+            doc_name = format_name(doc_info['display_name'])
             doc_url = get_detail(doc_info, 'URL')
-            university, grad_year = get_doc_university(doc_url)
+            uni_grad = get_doc_university(doc_url)
 
             # if check_exists(doc_name):
             #     continue
             # update_json(doc_info)
             try:
-                sql = "INSERT INTO doctor (VPID,NAME,DEGREE,UNIVERSITY,GRAD_YEAR,DISPLAY_TYPE,TYPE,SPECIALTIES,CITY," \
-                      "STATE,ADDRESS,LATITUDE,LONGITUDE,YEAR_EXP,NUMBER_OF_RATINGS,OVERALL_RATINGS,COMPANY,URL," \
-                      "CAMPAIGNS,OTHERS) " \
-                      "VALUES (%s, %s, %s, %s, %s,%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
+                sql = "INSERT INTO doctor (VPID,NAME,DEGREE,UNIVERSITY1,GRAD_YEAR1,UNIVERSITY2,GRAD_YEAR2," \
+                      "DISPLAY_TYPE,TYPE,SPECIALTIES,CITY,STATE,ADDRESS,LATITUDE,LONGITUDE," \
+                      "YEAR_EXP,NUMBER_OF_RATINGS,OVERALL_RATINGS,COMPANY,URL,CAMPAIGNS,OTHERS) VALUES (%s, %s, %s, " \
+                      "%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) "
                 val = (
                     get_detail(doc_info, 'vpid'), doc_name, get_detail(doc_info, 'degree'),
-                    university, grad_year,
+                    uni_grad[0][0], uni_grad[0][1], uni_grad[1][0], uni_grad[1][1],
                     get_detail(doc_info, 'DISPLAY_TYPE'), get_detail(doc_info, 'TYPE'),
                     get_detail(doc_info, 'SPECIALTIES'),
                     get_detail(doc_info, 'CITY'), get_detail(doc_info, 'STATE'), get_detail(doc_info, 'ADDRESS1'),
@@ -210,7 +266,8 @@ total_num = sess.get(URL).json()['hits']['total']  # get total number of doctors
 print(total_num)
 # exit(0)
 count = 0
-for i in range(305, total_num // 21):  # each page contains 21 doctors   # 256
+# for i in range():  # each page contains 21 doctors   # 476
+for i in range(399, total_num // 21):  # each page contains 21 doctors   # 476
     # for i in range(10):  # each page contains 21 doctors
     print('Page ' + str(i) + ' start!')
 
