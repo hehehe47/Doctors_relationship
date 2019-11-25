@@ -13,6 +13,7 @@ from pprint import pprint as pprint
 import redis
 import mysql.connector
 import random
+import src.Utilities.DB_connector as connector
 
 SLEEP_TIME = 10
 URL = 'https://www.vitals.com/search/ajax?city_state=Washington,%20DC&latLng=38.892091,-77.024055&reqNo=1'
@@ -34,22 +35,8 @@ HEADER = {
 NUM = 10000
 NOT_CRAWL = {'Hospital', 'Pharmacy', 'Urgent Care Center', 'Group Practice', 'Nursing Home', 'Cancer Center'}
 
-DB = 'AWS'
 
-if DB == 'local':
-    connector = mysql.connector.connect(
-        host="localhost",
-        user="root",
-        passwd="123456",
-        database="doctors_info"
-    )
-elif DB == 'AWS':
-    connector = mysql.connector.connect(
-        host='db-instance-1-stock.c8ut9axdtyf4.us-east-1.rds.amazonaws.com',
-        user='star',
-        password='Zx1993624',
-        db='doctors_info',
-    )
+
 
 
 def redis_build_connection():
@@ -63,13 +50,6 @@ def redis_build_connection():
     return client
 
 
-def mysql_build_connection():
-    try:
-        client = connector
-    except mysql.connector.Error as err_conn:
-        print("DB Connection Error: ", err_conn)
-        exit(0)
-    return client
 
 
 # def check_exists(doc_name):
@@ -174,18 +154,6 @@ def get_doc_university(url):
 
         uni_grad[loop] = vaild_uni_grad(university, grad_year)
 
-    # try:
-    #     university = soup.select('div[class="card education"] > ul > li > span')[
-    #         0].text.strip()  # soup.select('div > span')
-    #     grad_year = soup.select('div[class="card education"] > ul > li > p')[
-    #         0].text.strip()  # soup.select('div > span')
-    # except IndexError:
-    #     pass
-    # try:
-    #     university = soup.select('div[class="education"] > span')[0].text.strip()  # soup.select('div > span')
-    #     grad_year = soup.select('div[class="education"] > p')[0].text.strip()  # soup.select('div > span')
-    # except IndexError:
-    #     pass
 
     return uni_grad
 
@@ -255,8 +223,8 @@ def save_docs(sess, url):
     # pass
 
 
-client = mysql_build_connection()
-cursor = client.cursor()
+client = connector.Connector('AWS')
+cursor = client.getCursor()
 
 session = requests.Session()
 session.headers = HEADER

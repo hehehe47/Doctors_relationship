@@ -5,8 +5,10 @@
 
 #dirs
 node_modules
+data/REAL
 
 
 #files
 test.py
+src/Utilities/DB_connector.py
 

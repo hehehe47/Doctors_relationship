@@ -10,7 +10,22 @@ Mysql>source 【sql脚本文件的路径全名】
 示例：source d:\test\ss.sql
 
 
-### 字段说明
+### 字段说明（REAL_DATA)
+Column      | Explain     
+ ---------- | -----------  
+ ID             | ID(SELF-INCREMENT)
+ FIRST_NAME      | Pay attention to 'é' 'á'
+ LAST_NAME       |   
+ DEPARTMENT       |      
+ COMPANY          |    
+ CITY             |     
+ COUNTRY          | 
+ EMAIL          | Could be Null
+
+
+
+
+### 字段说明（vitals.com)
  字段      | 解释     
  ---------- | -----------  
  VPID             | ID     
