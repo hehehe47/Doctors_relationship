@@ -11,4 +11,5 @@ data/REAL
 #files
 test.py
 src/Utilities/DB_connector.py
+src/Utilities/INFO.py
 
